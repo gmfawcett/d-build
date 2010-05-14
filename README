@@ -1,0 +1,65 @@
+d-build
+--------------------
+
+Here's a first attempt at an easy "package assistance" system for the
+D programming language. It's meant to facilitate the use of
+third-party libraries when writing D applications.
+
+The current version is written in Python; I'll translate to D after
+the prototyping stage is finished. It should work on any platform that
+has Python 2.5+ installed.
+
+
+The test program
+--------------------
+
+A test program, 'test.d', is provided. To compile it, you will need
+libCURL development files installed, as well as 'git' and 'svn'
+clients. (Note, these are dependencies of the test program, not of the
+'d-build' script.) Also see the Unix-ism note below.
+
+Running './d-build test.d' should download the dependencies, compile
+everything, and put the final executable in a 'dist' directory.
+
+Run './d-build' with no arguments for command-line help.
+
+
+Dependencies
+--------------------
+
+At this time, there is no package catalogue. Each dependency is simply
+specified by the command that is used to download it.
+
+The included test program depends on two external projects: a simple
+Curl wrapper I wrote, hosted at github; and the 'dranges' package
+hosted on SVN at dsource.org. These are specified in the DEPS file for
+the project. Each line in DEPS is a commmand that will fetch a copy of
+the external project. You must have the necessary programs (git, svn,
+etc.) installed.
+
+(Note that the test project's dependency on 'dranges' has a Unix-ism
+in it: unfortunately I had to include '&& mv trunk dranges' to the
+download command, to get the 'dranges.*' module names to sync with the
+directory structure. I'd consider this a bug in the dranges
+repository, not a d-build bug. If you remove the dranges references
+from DEPS and from test.d, then you should be able to compile it on
+Windows, too.)
+
+
+External dependencies
+---------------------
+
+To declare a dependency on an external (C) library, use a pragma. For
+example, my curl wrapper includes the following line:
+
+  pragma(lib, "curl");
+
+This will inform the linker to include an '-lcurl' or similar flag to
+link in the external libCURL library.
+
+
+Comments
+--------------------
+
+Please contact me at <graham.fawcett@gmail.com> or discuss in the
+digitamars.D newsgroup (http://www.digitalmars.com/NewsGroup.html).

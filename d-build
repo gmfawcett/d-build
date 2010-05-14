@@ -1,0 +1,215 @@
+#!/usr/bin/env python
+
+from __future__ import with_statement
+from optparse import OptionParser
+from os import path
+import hashlib
+import itertools
+import os
+import re
+import shutil
+import sys
+
+BUILD    = 'build'
+DEPS     = '.deps'
+DIST     = 'dist'
+EXTERNAL = '.external'
+PWD      = os.getcwd()
+
+#------------------------------------------------------------
+
+def call(command):
+    """Call a subcommand, using system()."""
+    if VERBOSE:
+        print >> sys.stderr, command
+    result = os.system(command)
+    if not result == 0:
+        if not VERBOSE:
+            print >> sys.stderr, command
+        print >> sys.stderr, 'failure!'
+        sys.exit(result)
+
+def get_module(dsource):
+    """Given a source file, get its module name."""
+    name = path.basename(path.splitext(dsource)[0])
+    mod_pat = re.compile(r'^\s*module\s+(.*)\s*;.*$')
+    with open(dsource) as f:
+        for line in f:
+            m = mod_pat.match(line)
+            if m:
+                return m.group(1)
+    return name
+
+def get_includes(somedir):
+    """Given a root directory, where are the D 'include' directories?"""
+    includes = set()
+    for root, dirs, files in os.walk(somedir):
+        for name in files:
+            if name.endswith('.d'):
+                name = get_module(path.join(root, name))
+                if '.' in name: # package.package.module
+                    # step up N directories, based on package depth.
+                    here = root
+                    for n in range(len(name.split('.'))-1):
+                        parent = path.dirname(here)
+                    includes.add(parent)
+                else:
+                    # add the current
+                    includes.add(root)
+    return includes
+
+pragma_lib_pat = re.compile(r'.*pragma\s*\(lib\s*,\s*"(.*?)"\s*\)');
+
+def pragma_lib(dsource):
+    """Given a source filename, return a list of its pragma("lib") values."""
+    with open(dsource) as f:
+        return pragma_lib_pat.findall(f.read())
+
+def fetch_deps(depfiles):
+    """As needed, download the third-party dependencies of this project."""
+    # We put each third-party project in a directory named for the
+    # partial MD5 hash of the command that downloaded it. This avoids
+    # the necessity of a formal 'package name' for the dependency.
+    for fn in depfiles:
+        with open(fn) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                command = line
+                hsh = hashlib.md5(command).hexdigest()[:8]
+                destdir = path.join(EXTERNAL, hsh)
+                if not path.isdir(destdir):
+                    try:
+                        os.makedirs(destdir)
+                        os.chdir(destdir)
+                        print >> sys.stderr, command
+                        result = os.system(command)
+                        if result != 0:
+                            os.chdir(PWD)
+                            shutil.rmtree(destdir)
+                            raise Exception('fetch_deps: command failed.')
+                    finally:
+                        os.chdir(PWD)
+def rm(dirname):
+    """Recursively remove a directory."""
+    if path.isdir(dirname):
+        if VERBOSE:
+            print '[recursively deleting %r]' % dirname
+        shutil.rmtree(dirname)
+
+def clean(keepdeps=False):
+    """Delete working files from this project directory."""
+    deps = [BUILD, DIST]
+    if not keepdeps:
+        deps.append(EXTERNAL)
+    for dn in deps:
+        rm(dn)
+    if path.isfile('.deps'): os.unlink('.deps') 
+
+#------------------------------------------------------------
+
+def main():
+
+    # parse the command line options, and offer help
+    usage = "usage: %prog [options] [mainfile.d]"
+    parser = OptionParser(usage)
+    parser.add_option('-c', '--clean', action='store_true', dest='clean', 
+                      help='remove working files')
+    parser.add_option('-q', '--quiet', action='store_false', dest='verbose', 
+                      default=True,
+                      help='Suppress output')
+    parser.add_option('-k', '--keepdeps', action='store_true', dest='keepdeps', 
+                      help='when cleaning, do not remove dependencies')
+    (options, args) = parser.parse_args()
+
+    global VERBOSE
+    VERBOSE = options.verbose
+
+    #--------------------------------------------------
+    # cleaning
+    if options.clean:
+        clean(options.keepdeps)
+        if not args:
+            raise SystemExit
+
+    #--------------------------------------------------
+    # reading the main D source(s)
+
+    d_sources = args
+    if not d_sources:
+        print 'Please specify a main source file.\n'
+        parser.print_help()
+        sys.exit(-1)
+    main_source = d_sources[0]
+    libs = []
+
+    #--------------------------------------------------
+    # downloading dependencies
+
+    fetch_deps(['DEPS'])        # what about the DEPS in our DEPS?
+
+    #--------------------------------------------------
+    # calculate includes, and compile application sources
+
+    include_points = get_includes(EXTERNAL)
+    includes = ' '.join(['-I%s' % ip for ip in include_points])
+
+    cmd = 'dmd -od%s %s -deps=%s -c %s' % (BUILD, includes, DEPS, ' '.join(d_sources))
+    call(cmd)
+
+    #--------------------------------------------------
+    # find out which third-party sources are actually used by the
+    # app; compile them as needed into libraries, each dependency into
+    # its own library (to avoid object filename collisions).
+
+    localdeps = []
+    with open(DEPS) as f:
+        # read dependencies from '--deps' output of compiler.
+        pat = re.compile(r'.* \(([^/].*)\) : .* \(([^/].*)\).*')
+        for line in f:
+            match = pat.match(line)
+            if match:
+                localdeps.append(match.groups())
+
+    # look for pragma("lib") references in third-party files.
+    subs = set(sub for prj, sub in localdeps )
+    if subs:
+        for lst in [pragma_lib(s) for s in subs]:
+            libs.extend(lst)
+
+    # compile the third-party files
+    subs_to_compile = [s for s in subs]
+    if subs_to_compile:
+        def _libname(sub):
+            parts =sub.split('/')
+            key = parts[1] if sub.startswith(EXTERNAL) else '_default_'
+            return key
+
+        groups = itertools.groupby(sorted(subs, key=_libname), _libname)
+        for libname, to_compile in groups:
+            to_compile = list(to_compile)
+            cmd = 'dmd -lib -od%s -c %s -of%s' % (BUILD, ' '.join(to_compile),
+                                                  libname)
+            if not any(fn.startswith(libname) for fn in os.listdir(BUILD)):
+                call(cmd)
+
+    #--------------------------------------------------
+    # linking
+
+    executable = main_source.replace('.d', '')
+    cmd = 'dmd build/* -of%s/%s' % (DIST, executable)
+
+    # don't forget app-specific pragma("lib") references
+    for lst in [pragma_lib(ds) for ds in d_sources]: 
+        libs.extend(lst)
+    if libs:
+        cmd += ' ' + ' '.join(['-L-l%s' % lib for lib in sorted(set(libs))])
+    call(cmd)
+
+    if VERBOSE:
+        print '[compiled executable to %s/%s]' % (DIST, executable)
+
+#------------------------------------------------------------
+if __name__ == '__main__':
+    main()
