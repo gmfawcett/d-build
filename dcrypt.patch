@@ -1,0 +1,38 @@
+diff -r fc97fffd106d dcrypt/crypto/Hash.d
+--- a/dcrypt/crypto/Hash.d	Thu May 14 17:46:46 2009 -0400
++++ b/dcrypt/crypto/Hash.d	Fri May 14 22:15:33 2010 -0400
+@@ -140,7 +140,7 @@
+         
+         // Length padding
+         for (int i = 0; i < blockSize; i+=8, bits>>=8) // little endian
+-                buffer[index++] = bits;
++                buffer[index++] = cast(ubyte) bits;
+                                 
+         if (mode == MODE_SHA)
+             buffer[(buffer.length-(blockSize >> 3))..buffer.length].reverse; // big endian
+diff -r fc97fffd106d dcrypt/misc/ByteConverter.d
+--- a/dcrypt/misc/ByteConverter.d	Thu May 14 17:46:46 2009 -0400
++++ b/dcrypt/misc/ByteConverter.d	Fri May 14 22:15:33 2010 -0400
+@@ -181,11 +181,11 @@
+         
+         static ubyte[char] hexitIndex;
+         for (int i = 0; i < hexits.length; i++)
+-            hexitIndex[hexits[i]] = i;
++            hexitIndex[hexits[i]] = cast(ubyte) i;
+             
+         for (int i = 0, j = 0; i < output.length; i++)
+         {
+-            output[i] = hexitIndex[inputAsLower[j++]] << 4;
++            output[i] = cast(ubyte) (hexitIndex[inputAsLower[j++]] << 4);
+             output[i] |= hexitIndex[inputAsLower[j++]]; 
+         }
+         
+@@ -197,7 +197,7 @@
+         char[] output = new char[input.length];
+         
+         foreach (int i, char c; input) 
+-            output[i] = ((c >= 'A' && c <= 'Z') ? c+32 : c);
++            output[i] = cast(char) ((c >= 'A' && c <= 'Z') ? c+32 : c);
+             
+         return cast(string)output;
+     }
