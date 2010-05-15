@@ -49,9 +49,9 @@ def get_includes(somedir):
                 name = get_module(path.join(root, name))
                 if '.' in name: # package.package.module
                     # step up N directories, based on package depth.
-                    here = root
+                    parent = root
                     for n in range(len(name.split('.'))-1):
-                        parent = path.dirname(here)
+                        parent = path.dirname(parent)
                     includes.add(parent)
                 else:
                     # add the current
