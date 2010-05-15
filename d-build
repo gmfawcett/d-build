@@ -121,6 +121,10 @@ def main():
                       help='Suppress output')
     parser.add_option('-k', '--keepdeps', action='store_true', dest='keepdeps', 
                       help='when cleaning, do not remove dependencies')
+    parser.add_option('-C', '--compilerflags', dest='compilerflags', default='',
+                      help='flags to pass to compiler')
+    parser.add_option('-L', '--linkerflags', dest='linkerflags', default='',
+                      help='flags to pass to linker')
     (options, args) = parser.parse_args()
 
     global VERBOSE
@@ -155,7 +159,8 @@ def main():
     include_points = get_includes(EXTERNAL)
     includes = ' '.join(['-I%s' % ip for ip in include_points])
 
-    cmd = 'dmd -od%s %s -deps=%s -c %s' % (BUILD, includes, DEPS, ' '.join(d_sources))
+    cmd = 'dmd %s -od%s %s -deps=%s -c %s' % (options.compilerflags,
+                                              BUILD, includes, DEPS, ' '.join(d_sources))
     call(cmd)
 
     #--------------------------------------------------
@@ -189,8 +194,9 @@ def main():
         groups = itertools.groupby(sorted(subs, key=_libname), _libname)
         for libname, to_compile in groups:
             to_compile = list(to_compile)
-            cmd = 'dmd -lib -od%s -c %s -of%s' % (BUILD, ' '.join(to_compile),
-                                                  libname)
+            cmd = 'dmd %s -lib -od%s -c %s -of%s' % (options.compilerflags,
+                                                     BUILD, ' '.join(to_compile),
+                                                     libname)
             if not any(fn.startswith(libname) for fn in os.listdir(BUILD)):
                 call(cmd)
 
@@ -198,7 +204,8 @@ def main():
     # linking
 
     executable = main_source.replace('.d', '')
-    cmd = 'dmd build/* -of%s/%s' % (DIST, executable)
+    linkerflags = '-L%s' % options.linkerflags if options.linkerflags else ''
+    cmd = 'dmd %s build/* -of%s/%s' % (linkerflags, DIST, executable)
 
     # don't forget app-specific pragma("lib") references
     for lst in [pragma_lib(ds) for ds in d_sources]: 
