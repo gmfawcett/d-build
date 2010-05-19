@@ -1,14 +1,18 @@
-import std.algorithm	: array;
-import std.stdio	: writefln;
-import dranges.range2	: asSet;
-import fawcett.curl	: Curl;
+import std.stdio;
+import dcollections.ArrayList;
 
 void main() {
-  // curl testing
-  auto url = "http://www.digitalmars.com/";
-  auto c   = new Curl(url);
-  c.perform;
+  auto aa = new ArrayList!(int);
+  for (int i=0; i < 10; i++) {
+    aa.add(i*5);
+  }
+  print(aa, "filled in arraylist");
+}
 
-  // dranges testing.
-  writefln("dranges test: %s", array(asSet([1,2,3,4,5,4,3,2,1])));
+void print(Iterator!(int) s, in char[] message)
+{
+  writef("%s [", message);
+  foreach(i; s)
+    writef(" %s", i);
+  writeln(" ]");
 }
